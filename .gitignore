@@ -207,22 +207,16 @@ marimo/_lsp/
 __marimo__/
 
 
-# === MATLAB & SIMULINK (Crítico para Control) ===
-# Archivos de autoguardado y backups
-*.asv
-*.autosave
-*.bak
+# --- DATA RULES ---
+# Ignorar resultados temporales o imágenes generadas
+*.fig
+*.jpg
+*.png
 
-# Archivos compilados y binarios (NO SUBIR)
-*.mex*
-*.tf
-*.c
-*.h
-*.exe
-*.p
+# PERMITIR archivos clave (Inputs)
+!data/*.mat
+!data/*.stl
+!data/*.txt
 
-# Simulink Cache (Lo más importante: esto engorda el repo inútilmente)
-slprj/
-*_acc.slxc
-*.slxc
-*.sldi
+# (Opcional) Bloquear .mat si están fuera de la carpeta data
+# *.mat

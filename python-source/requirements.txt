@@ -1,0 +1,4 @@
+numpy>=1.24.0   # Para matrices y álgebra lineal (el motor de MATLAB)
+scipy>=1.10.0   # Para integradores de ecuaciones diferenciales (ode45 -> solve_ivp)
+matplotlib>=3.7 # Para gráficos y visualización 3D
+pandas          # Para manejo de datos y efemérides (opcional pero recomendado)
