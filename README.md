@@ -1,32 +1,105 @@
 # TFG-propagation-attitude-envisat
 
-## System Overview
-This repository contains a 6-Degrees-of-Freedom (6-DOF) numerical simulation environment for spacecraft orbit and attitude propagation. Designed with strict modularity, it models a rigid body (e.g., Envisat) subjected to complex environmental perturbations. The architecture strictly segregates the mathematical plant from configuration and telemetry, ensuring deterministic execution and supporting software traceability requirements.
+# 6-Degrees-of-Freedom (6-DOF) Modular Orbital and Attitude Dynamics Propagator
 
-## Mathematical Baseline & Physical Models
-The simulation is grounded in the following validated physics models:
-* **Geopotential:** Spherical harmonics expansion using the EGM-96 model to simulate gravity gradient perturbations.
-* **Geomagnetism:** IGRF-14 model utilized for residual magnetic dipole and passive Eddy current torques.
-* **Aerodynamics:** Exponential atmospheric density model for aerodynamic drag estimation based on orbital altitude.
-* **Kinematics:** Quaternion-based attitude integration to strictly prevent gimbal lock, coupled with automated transformations to Euler (3-1-3) and Tait-Bryan (3-2-1) angles.
+## 1. System Overview
+This repository hosts a high-fidelity, production-grade numerical simulation environment developed in MATLAB to propagate the decoupled 6-DOF translation and rotational dynamics of inactive spacecraft in Low Earth Orbit (LEO). Designed around modern software engineering principles, the simulator implements strict modularity, structural encapsulation via nested data structures (`Sat`, `Env`, `Sim`), and optimized vectorized computation. 
 
-## System Architecture
-The codebase follows a strictly segregated directory structure to isolate critical dynamics from non-critical data processing:
+The primary plant simulates a rigid body subjected to non-uniform gravitational fields, complex geomagnetic field vectors, and upper atmospheric aerodynamics, delivering an auditable, deterministic tool for space debris tracking, mission analysis, and Active Debris Removal (ADR) planning.
 
-* `/config`: Initialization scripts and static parameter packaging (satellite inertia, environmental epochs).
-* `/core`: The critical mathematical plant. Contains the numerical integrator (`ode89`) and the coupled orbital/attitude dynamic equations.
-* `/math_tools`: Independent, stateless algebraic and coordinate transformation utilities (e.g., DCM generation, Keplerian to Cartesian state vectors).
-* `/post_processing`: Non-critical telemetry extraction, 3D attitude animation, and disturbance torque visualization.
-* `/assets`: External dependencies, including STL files for 3D rendering.
+---
 
-## Prerequisites
-* MATLAB (Tested on standard distributions; no specialized toolboxes strictly required for core propagation).
-* Validation of `.mat` data files (EGM-96 and IGRF-14 coefficients) located in the `/config` directory.
+## 2. Theoretical Baseline & Physical Models
 
-## Execution
-The system is orchestrated entirely through the root script. Do not execute individual sub-modules directly.
+The mathematical engine of the propagator is divided into two main execution blocks: orbital translation and attitude kinematics/dynamics.
 
-1. Clone the repository and navigate to the root directory in MATLAB.
-2. Run the master orchestrator:
-   ```matlab
-   main
+### 2.1. Orbital Dynamics & Perturbations (Translational Plant)
+The center of mass translation is governed by Newton's second law in the Earth-Centered Inertial (ECI J2000) frame:
+
+$$\dot{\vec{r}} = \vec{v}$$
+$$\dot{\vec{v}} = -\frac{\mu}{r^3}\vec{r} + \vec{a}_{\text{grav}}(\vec{r},t) + \vec{a}_{\text{drag}}(\vec{r},t)$$
+
+*   **Earth Geopotential ($\vec{a}_{\text{grav}}$):** Modeled via a spherical harmonics expansion using the Earth Gravitational Model 1996 (EGM-96) truncated to degree and order 10 ($10 \times 10$). This captures non-spherical Earth mass distributions, zonal ($m=0$), and tesseral/sectorial ($m \neq 0$) variations:
+    
+    $$V(r,\theta,\phi) = -\frac{\mu}{r}\sum_{n=2}^{N}\left(\frac{a}{r}\right)^n \sum_{m=0}^{n}\left(C_n^m \cos(m\phi) + S_n^m \sin(m\phi)\right)P_n^m(\cos \theta)$$
+    
+*   **Atmospheric Drag ($\vec{a}_{\text{drag}}$):** Simulates upper atmospheric aerodynamic resistance acting opposite to the spacecraft's relative velocity vector ($\vec{v}_{\text{rel}}$) using a segment-tabulated exponential density decay model based on the U.S. Standard Atmosphere 1976 baseline:
+    
+    $$\vec{a}_{\text{drag}} = -\frac{1}{2}\frac{C_D}{m} \rho(h) A_{\text{ref}} \vert{}\vec{v}_{\text{rel}}\vert{}\vec{v}_{\text{rel}}$$
+
+### 2.2. Attitude Dynamics & Kinematics (Rotational Plant)
+*   **Kinematics (Quaternion Engine):** Integrates the orientation using unit quaternions ($\vec{q} = [q_0, q_1, q_2, q_3]$ with an un-skewed scalar-first convention) to avoid the singular matrices and mathematical gimbal lock intrinsic to standard Euler or Tait-Bryan angles during wide-amplitude tumbling maneuvers:
+    
+    $$\frac{d\vec{q}}{dt} = \frac{1}{2}\Omega_q(\vec{\omega})\vec{q} = \frac{1}{2} \begin{pmatrix} 0 & -\omega_1 & -\omega_2 & -\omega_3 \\ \omega_1 & 0 & \omega_3 & -\omega_2 \\ \omega_2 & -\omega_3 & 0 & -\omega_1 \\ \omega_3 & \omega_2 & -w_1 & 0 \end{pmatrix} \begin{pmatrix} q_0 \\ q_1 \\ q_2 \\ q_3 \end{pmatrix}$$
+    
+*   **Dynamics (Euler's Rotational Equations):** Solved strictly in the spacecraft's principal body-fixed frame of reference, where the inertia tensor is fully diagonalized ($I = \text{diag}(I_x, I_y, I_z)$):
+    
+    $$I_x \dot{\omega}_x = (I_y - I_z)\omega_y \omega_z + M_x$$
+    $$I_y \dot{\omega}_y = (I_z - I_x)\omega_z \omega_x + M_y$$
+    $$I_z \dot{\omega}_z = (I_x - I_y)\omega_x \omega_y + M_z$$
+
+### 2.3. Environmental Torques ($\vec{M}$)
+*   **Gravity Gradient Torque ($\vec{T}_{\text{GG}}$):** Arises due to the non-uniform central gravity field acting across the dimensions of an asymmetrical rigid body, forcing a restorative par aligning the axis of minimum inertia toward the Nadir vector:
+    
+    $$\vec{T}_{\text{GG}} = 3\frac{\mu}{r^3} \hat{r}_{\text{body}} \times (I \cdot \hat{r}_{\text{body}})$$
+    
+*   **Residual Magnetic Torque ($\vec{T}_{\text{res}}$):** Models the permanent residual magnetization dipole ($\vec{m}$) native to the spacecraft structure or internal defunct components interacting with the local Earth geomagnetic field:
+    
+    $$\vec{T}_{\text{res}} = \vec{m} \times \vec{B}_{\text{body}}$$
+    
+*   **Eddy Current Magnetic Torque ($\vec{T}_{\text{eddy}}$):** A purely dissipative, non-conservative par generated by induction parásitas circulating in the structural conductors rotating across the geomagnetic lines of force. It behaves as an orientation-damping mechanism[cite: 51]:
+    
+    $$\vec{T}_{\text{eddy}} = [G(\vec{\omega} \times \vec{B}_{\text{body}})] \times \vec{B}_{\text{body}}$$
+    
+    The local geomagnetic vector ($\vec{B}$) is interrogated using the fully expanded International Geomagnetic Reference Field (IGRF-14) up to degree and order 13 ($13 \times 13$)[cite: 51].
+
+---
+
+## 3. Directory Structure & Architecture
+
+The workspace implements an explicit segregation of functional domains to facilitate automated unit testing and rigorous verification[cite: 51]:
+
+```text
+/TFG-propagation-attitude-envisat
+├── main.m                  # Master high-level orchestrator; executes the sim sequence
+├── .gitignore              # Filters compiled structures, workspace bins, and .mat files
+├── README.md               # High-level system definition document (this file)
+│
+├── /config                 # Data entry, parameters, and static structures
+│   ├── init_sim.m          # Parses static files and packages data fields into structs
+│   ├── init_conditions.m   # Script defining the baseline simulation conditions
+│   ├── cond_inicial.mat    # Compiled baseline initial states structure
+│   ├── coef_egm96_10.m     # Script storing EGM-96 geopotential coefficients
+│   ├── coef_egm96_10.mat   # Matrix containing the geopotential coefficients
+│   ├── coef_geomagn14.m    # Script storing IGRF-14 geomagnetic coefficients
+│   └── coef_geomagn14.mat  # Matrix containing the IGRF-14 coefficients
+│
+├── /core                   # Critical mathematical plant (Numerical dynamics solvers)
+│   ├── run_propagator.m    # Manages execution flow of orbital and attitude integrations
+│   ├── ecs_orbit.m         # Computes the system of ODEs for orbital translation
+│   ├── ecs_actitud.m       # Computes the system of ODEs for attitude state vectors
+│   ├── drag_exp.m          # Exponential upper atmosphere aerodynamic density evaluator
+│   ├── geopoten_ecef_cartesian.m # Vectorized EGM-96 acceleration calculator
+│   └── geomagn_cartesian_field.m # Vectorized IGRF-14 field strengths interrogator
+│
+├── /math_tools             # Stateless coordinate transformations & matrix utilities
+│   ├── deriva_polLegendre.m # Analytical derivative engine for Legendre harmonics
+│   ├── esf2cart_matrix.m   # Transformation matrix for spherical-to-cartesian conversions
+│   ├── Eul2quat.m          # Euler/Tait-Bryan angle list to quaternion compiler
+│   ├── quat2DCM.m          # Generates 3x3 direction cosine matrices from quaternions
+│   ├── quat2Eul.m          # Transforms quaternions to readable Euler/Tait-Bryan profiles
+│   ├── rot_matrix.m        # Elemental single-axis rotation operator
+│   ├── trasp.m             # Highly optimized 3D matrix stack transposition tool
+│   ├── kepler2vstate.m     # Converts classical orbital elements to ECI coordinates
+│   ├── vstate2kepler.m     # Extracts orbital elements from ECI vectors
+│   └── gmst.m              # Calculates Greenwich Mean Sidereal Time for frame tracking
+│
+├── /post_processing        # Non-critical analysis, graphics, and visual telemetry
+│   ├── telem_analysis.m    # Main data extraction wrapper and figure manager
+│   ├── graf_torques_igrf.m # Extracts and plots environmental torque timelines
+│   ├── space_animation.m   # Interpolated 3D rendering patch engine using STL models
+│   ├── extract_efem.m      # Writes raw ephemeris timelines to disk (.txt format)
+│   └── extract_dcm.m       # Writes DCM rotation logs to disk (.txt format)
+│
+└── /assets                 # Structural resources and CAD definitions
+    └── envisat_stl.stl     # Geometric triangulation definition for the 3D visualizer
