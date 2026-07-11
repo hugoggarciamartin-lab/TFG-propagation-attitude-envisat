@@ -3,7 +3,7 @@
 # 6-Degrees-of-Freedom (6-DOF) Modular Orbital and Attitude Dynamics Propagator
 
 ## 1. System Overview
-This repository hosts a high-fidelity, production-grade numerical simulation environment developed in MATLAB to propagate the decoupled 6-DOF translation and rotational dynamics of inactive spacecraft in Low Earth Orbit (LEO). Designed around modern software engineering principles, the simulator implements strict modularity, structural encapsulation via nested data structures (`Sat`, `Env`, `Sim`), and optimized vectorized computation. 
+This repository hosts a high-fidelity, production-grade numerical simulation environment developed in MATLAB to propagate the decoupled 6-DOF translational and rotational dynamics of inactive spacecraft in Low Earth Orbit (LEO). Designed around modern software engineering principles, the simulator implements strict modularity, structural encapsulation via nested data structures (`Sat`, `Env`, `Sim`), and optimized vectorized computation. 
 
 The primary plant simulates a rigid body subjected to non-uniform gravitational fields, complex geomagnetic field vectors, and upper atmospheric aerodynamics, delivering an auditable, deterministic tool for space debris tracking, mission analysis, and Active Debris Removal (ADR) planning.
 
@@ -14,44 +14,20 @@ The primary plant simulates a rigid body subjected to non-uniform gravitational 
 The mathematical engine of the propagator is divided into two main execution blocks: orbital translation and attitude kinematics/dynamics.
 
 ### 2.1. Orbital Dynamics & Perturbations (Translational Plant)
-The center of mass translation is governed by Newton's second law in the Earth-Centered Inertial (ECI J2000) frame:
+The center of mass translation is governed by Newton's second law in the Earth-Centered Inertial (ECI J2000) frame, factoring in the central gravity field and external forces:
 
-$$\dot{\vec{r}} = \vec{v}$$
-$$\dot{\vec{v}} = -\frac{\mu}{r^3}\vec{r} + \vec{a}_{\text{grav}}(\vec{r},t) + \vec{a}_{\text{drag}}(\vec{r},t)$$
-
-*   **Earth Geopotential ($\vec{a}_{\text{grav}}$):** Modeled via a spherical harmonics expansion using the Earth Gravitational Model 1996 (EGM-96) truncated to degree and order 10 ($10 \times 10$). This captures non-spherical Earth mass distributions, zonal ($m=0$), and tesseral/sectorial ($m \neq 0$) variations:
-    
-    $$V(r,\theta,\phi) = -\frac{\mu}{r}\sum_{n=2}^{N}\left(\frac{a}{r}\right)^n \sum_{m=0}^{n}\left(C_n^m \cos(m\phi) + S_n^m \sin(m\phi)\right)P_n^m(\cos \theta)$$
-    
-*   **Atmospheric Drag ($\vec{a}_{\text{drag}}$):** Simulates upper atmospheric aerodynamic resistance acting opposite to the spacecraft's relative velocity vector ($\vec{v}_{\text{rel}}$) using a segment-tabulated exponential density decay model based on the U.S. Standard Atmosphere 1976 baseline:
-    
-    $$\vec{a}_{\text{drag}} = -\frac{1}{2}\frac{C_D}{m} \rho(h) A_{\text{ref}} \vert{}\vec{v}_{\text{rel}}\vert{}\vec{v}_{\text{rel}}$$
+*   **Earth Geopotential Model (EGM-96):** Modeled via a spherical harmonics expansion using the Earth Gravitational Model 1996 coefficients truncated to degree and order 10 ($10 \times 10$). This model accounts for the non-spherical mass distribution of the Earth, computing the specific non-central accelerations caused by the planet's equatorial flattening (zonal harmonics) and structural or continent-driven mass asymmetries (tesseral and sectorial harmonics).
+*   **Atmospheric Drag Model:** Simulates upper atmospheric aerodynamic resistance acting strictly opposite to the spacecraft's relative velocity vector. It utilizes a segment-tabulated exponential density decay algorithm calibrated with the U.S. Standard Atmosphere 1976 baseline, which estimates the decaying air density as a function of orbital altitude, spacecraft reference area, mass, and drag coefficient.
 
 ### 2.2. Attitude Dynamics & Kinematics (Rotational Plant)
-*   **Kinematics (Quaternion Engine):** Integrates the orientation using unit quaternions ($\vec{q} = [q_0, q_1, q_2, q_3]$ with an un-skewed scalar-first convention) to avoid the singular matrices and mathematical gimbal lock intrinsic to standard Euler or Tait-Bryan angles during wide-amplitude tumbling maneuvers:
-    
-    $$\frac{d\vec{q}}{dt} = \frac{1}{2}\Omega_q(\vec{\omega})\vec{q} = \frac{1}{2} \begin{pmatrix} 0 & -\omega_1 & -\omega_2 & -\omega_3 \\ \omega_1 & 0 & \omega_3 & -\omega_2 \\ \omega_2 & -\omega_3 & 0 & -\omega_1 \\ \omega_3 & \omega_2 & -w_1 & 0 \end{pmatrix} \begin{pmatrix} q_0 \\ q_1 \\ q_2 \\ q_3 \end{pmatrix}$$
-    
-*   **Dynamics (Euler's Rotational Equations):** Solved strictly in the spacecraft's principal body-fixed frame of reference, where the inertia tensor is fully diagonalized ($I = \text{diag}(I_x, I_y, I_z)$):
-    
-    $$I_x \dot{\omega}_x = (I_y - I_z)\omega_y \omega_z + M_x$$
-    $$I_y \dot{\omega}_y = (I_z - I_x)\omega_z \omega_x + M_y$$
-    $$I_z \dot{\omega}_z = (I_x - I_y)\omega_x \omega_y + M_z$$
+*   **Quaternion Kinematics Engine:** Integrates the attitude over time using unit quaternions under an un-skewed, scalar-first convention. This cinematic representation maps angular velocities to the time derivative of the orientation parameters, strictly avoiding the mathematical singularities and gimbal lock geometric failures native to standard Euler or Tait-Bryan angle rates during wide-amplitude tumbling maneuvers.
+*   **Euler's Rotational Equations:** Solved strictly in the spacecraft's principal body-fixed frame of reference, where the inertia tensor is fully diagonalized. This system of non-linear differential equations couples the cross-products of the body's angular velocities with its principal moments of inertia and the sum of external perturbing torques.
 
-### 2.3. Environmental Torques ($\vec{M}$)
-*   **Gravity Gradient Torque ($\vec{T}_{\text{GG}}$):** Arises due to the non-uniform central gravity field acting across the dimensions of an asymmetrical rigid body, forcing a restorative par aligning the axis of minimum inertia toward the Nadir vector:
-    
-    $$\vec{T}_{\text{GG}} = 3\frac{\mu}{r^3} \hat{r}_{\text{body}} \times (I \cdot \hat{r}_{\text{body}})$$
-    
-*   **Residual Magnetic Torque ($\vec{T}_{\text{res}}$):** Models the permanent residual magnetization dipole ($\vec{m}$) native to the spacecraft structure or internal defunct components interacting with the local Earth geomagnetic field:
-    
-    $$\vec{T}_{\text{res}} = \vec{m} \times \vec{B}_{\text{body}}$$
-    
-*   **Eddy Current Magnetic Torque ($\vec{T}_{\text{eddy}}$):** A purely dissipative, non-conservative par generated by induction parásitas circulating in the structural conductors rotating across the geomagnetic lines of force. It behaves as an orientation-damping mechanism[cite: 51]:
-    
-    $$\vec{T}_{\text{eddy}} = [G(\vec{\omega} \times \vec{B}_{\text{body}})] \times \vec{B}_{\text{body}}$$
-    
-    The local geomagnetic vector ($\vec{B}$) is interrogated using the fully expanded International Geomagnetic Reference Field (IGRF-14) up to degree and order 13 ($13 \times 13$)[cite: 51].
+### 2.3. Environmental Torques
+*   **Gravity Gradient Torque:** Derived by integrating the non-uniform central gravity field across the asymmetrical geometric extensions of the rigid body[cite: 51]. Because the gravitational pull decreases with the distance from the Earth's center, a restorative par is generated, which continuously forces the spacecraft's axis of minimum inertia to align with the Nadir vector[cite: 51].
+*   **Residual Magnetic Torque:** Models the permanent magnetic dipole native to the defunct spacecraft's structural materials or internal electronics[cite: 51]. This constant dipole vector interacts via a vector cross-product with the local geomagnetic field vector, creating a torque that forces the body to oscillate around the Earth's magnetic lines of force[cite: 51].
+*   **Eddy Current Magnetic Torque:** A purely disipative, non-conservative par generated by electromotive forces and induced parásitas (Foucault currents) circulating inside the spacecraft's structural conductors as they rotate across the geomagnetic field[cite: 51]. This torque acts as an orientation-damping mechanism that actively drains the rotational kinetic energy of the tumbling body[cite: 51].
+*   **Geomagnetic Field Model (IGRF-14):** The local geomagnetic vector is evaluated using the fully expanded International Geomagnetic Reference Field 14th generation mathematical baseline up to degree and order 13 ($13 \times 13$)[cite: 51]. The model computes the magnetic potential using time-dependent Gauss coefficients to accurately reflect spatial variations and secular drift in low Earth orbits[cite: 51].
 
 ---
 
