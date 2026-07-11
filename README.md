@@ -1,4 +1,4 @@
-# TFG-propagation-attitude-envisat
+# Propagation-Attitude-Envisat
 
 # 6-Degrees-of-Freedom (6-DOF) Modular Orbital and Attitude Dynamics Propagator
 
