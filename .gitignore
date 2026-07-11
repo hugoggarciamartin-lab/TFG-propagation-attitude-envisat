@@ -1,0 +1,18 @@
+# Archivos de respaldo y temporales
+*.asv
+*.bak
+*.tmp
+
+# Datos y resultados (crucial para no saturar el repo)
+*.mat
+*.fig
+*.txt
+output/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Directorios de configuración de IDEs
+.vscode/
+.vs/
