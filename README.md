@@ -1,6 +1,10 @@
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
+![MATLAB](https://img.shields.io/badge/MATLAB-R2023b%2B-blue)
+![Architecture](https://img.shields.io/badge/Architecture-Vectorized-purple)
 # Propagation-Attitude-Envisat
 
-# 6-Degrees-of-Freedom (6-DOF) Modular Orbital and Attitude Dynamics Propagator
+# Envisat 6-Degrees-of-Freedom (6-DOF) Modular Attitude Dynamics Propagator
+
 
 ## 1. System Overview
 This repository hosts a high-fidelity, production-grade numerical simulation environment developed in MATLAB to propagate the decoupled 6-DOF translational and rotational dynamics of inactive spacecraft in Low Earth Orbit (LEO). Designed around modern software engineering principles, the simulator implements strict modularity, structural encapsulation via nested data structures (`Sat`, `Env`, `Sim`), and optimized vectorized computation. 
